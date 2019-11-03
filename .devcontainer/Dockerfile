@@ -23,13 +23,13 @@ ENV USER root
 WORKDIR /home/root
 
 RUN touch .bash_profile \
- && curl https://nixos.org/releases/nix/nix-2.2.1/install | sh 
+ && curl https://nixos.org/releases/nix/nix-2.2.1/install | sh
 
 RUN echo '. /root/.nix-profile/etc/profile.d/nix.sh' >> /root/.bashrc
 
 # Install HIE
 RUN . /root/.nix-profile/etc/profile.d/nix.sh \
-  && nix-env -iA nixpkgs.haskell.compiler.ghc864 \
+  && nix-env -iA nixpkgs.haskell.compiler.ghc865 \
   && nix-env -iA cachix -f https://cachix.org/api/v1/install \
   && cachix use all-hies \
-  && nix-env -iA selection --arg selector 'p: { inherit (p) ghc864; }' -f https://github.com/infinisil/all-hies/tarball/master
+  && nix-env -iA selection --arg selector 'p: { inherit (p) ghc865; }' -f https://github.com/infinisil/all-hies/tarball/master
