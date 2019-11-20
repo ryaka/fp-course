@@ -38,8 +38,7 @@ exec ::
   State s a
   -> s
   -> s
-exec =
-  error "todo: Course.State#exec"
+exec sk = snd . runState sk
 
 -- | Run the `State` seeded with `s` and retrieve the resulting value.
 --
@@ -48,8 +47,7 @@ eval ::
   State s a
   -> s
   -> a
-eval =
-  error "todo: Course.State#eval"
+eval sk = fst . runState sk
 
 -- | A `State` where the state also distributes into the produced value.
 --
@@ -57,8 +55,7 @@ eval =
 -- (0,0)
 get ::
   State s s
-get =
-  error "todo: Course.State#get"
+get = State (\s -> (s, s))
 
 -- | A `State` where the resulting state is seeded with the given value.
 --
@@ -67,8 +64,7 @@ get =
 put ::
   s
   -> State s ()
-put =
-  error "todo: Course.State#put"
+put s = State (\_ -> ((), s))
 
 -- | Implement the `Functor` instance for `State s`.
 --
@@ -79,8 +75,8 @@ instance Functor (State s) where
     (a -> b)
     -> State s a
     -> State s b
-  (<$>) =
-    error "todo: Course.State#(<$>)"
+  f <$> sk = State $ \s -> let (a, nextS) = (runState sk) s
+                           in (f a, nextS)
 
 -- | Implement the `Applicative` instance for `State s`.
 --
@@ -96,14 +92,14 @@ instance Applicative (State s) where
   pure ::
     a
     -> State s a
-  pure =
-    error "todo: Course.State pure#instance (State s)"
+  pure a = State $ \s -> (a, s)
   (<*>) ::
     State s (a -> b)
     -> State s a
     -> State s b
-  (<*>) =
-    error "todo: Course.State (<*>)#instance (State s)"
+  (State gf) <*> (State k) = State $ \s -> let (fab, nextS) = gf s
+                                               (a, nextNextS) = k nextS
+                                            in (fab a, nextNextS)
 
 -- | Implement the `Monad` instance for `State s`.
 --
@@ -120,8 +116,8 @@ instance Monad (State s) where
     (a -> State s b)
     -> State s a
     -> State s b
-  (=<<) =
-    error "todo: Course.State (=<<)#instance (State s)"
+  fas =<< (State k) = State $ \s -> let (a, followingS) = k s
+                                    in runState (fas a) followingS
 
 -- | Find the first element in a `List` that satisfies a given predicate.
 -- It is possible that no element is found, hence an `Optional` result.
@@ -142,8 +138,10 @@ findM ::
   (a -> f Bool)
   -> List a
   -> f (Optional a)
-findM =
-  error "todo: Course.State#findM"
+findM _ Nil = pure Empty
+-- f x is a Functor[Bool] so we bind a function that checks its contents, if it's true then yee
+-- otherwise we recurse
+findM f (x:.xs) = f x >>= (\q -> if q then pure (Full x) else findM f xs)
 
 -- | Find the first element in a `List` that repeats.
 -- It is possible that no element repeats, hence an `Optional` result.
@@ -156,8 +154,10 @@ firstRepeat ::
   Ord a =>
   List a
   -> Optional a
-firstRepeat =
-  error "todo: Course.State#firstRepeat"
+-- State f where f returns (Bool, f')
+firstRepeat xs = eval (findM f xs) S.empty
+  where
+    f a = State (\s -> (S.member a s, S.insert a s))
 
 -- | Remove all duplicate elements in a `List`.
 -- /Tip:/ Use `filtering` and `State` with a @Data.Set#Set@.
@@ -169,8 +169,9 @@ distinct ::
   Ord a =>
   List a
   -> List a
-distinct =
-  error "todo: Course.State#distinct"
+distinct xs = eval (filtering f xs) S.empty
+    where
+      f a = State (\s -> (S.notMember a s, S.insert a s))
 
 -- | A happy number is a positive integer, where the sum of the square of its digits eventually reaches 1 after repetition.
 -- In contrast, a sad number (not a happy number) is where the sum of the square of its digits never reaches 1
@@ -193,8 +194,20 @@ distinct =
 --
 -- >>> isHappy 44
 -- True
+-- We want a set to pass along to see if we've seen the number before
+-- If number is 1 then true. If number is in set, then false. Else recurse with new state.
+-- Maybe produce a stream of numbers while not 1 and find firstRepeat. If firstRepeat
+-- is not none then unhappy.
+-- Produce takes a number and yields a new number. Use this to calculate sum of squares of digits
+-- join is basically a flatMap where map function is just value itself
+-- square is probably number that takes sum of square of digits
+-- 1. Take Integer and convert to string with show
+-- 2. Map each digit with digitToInt and square that
+-- 3. Sum that
+-- 4. Step 1 - 3 is our square function
+-- 5. Use square function to feed into produce
 isHappy ::
   Integer
   -> Bool
-isHappy =
-  error "todo: Course.State#isHappy"
+isHappy = let nextSquare = join (*) . digitToInt
+  in contains 1 . firstRepeat . produce (toInteger . sum . map nextSquare . show')
