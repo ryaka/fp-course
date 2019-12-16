@@ -85,8 +85,8 @@ printFile ::
   FilePath
   -> Chars
   -> IO ()
-printFile fname content =
-  putStrLn ("============ " ++ fname) >>
+printFile name content = do
+  putStrLn name
   putStrLn content
 
 -- Given a list of (file name and file contents), print each.
@@ -94,43 +94,50 @@ printFile fname content =
 printFiles ::
   List (FilePath, Chars)
   -> IO ()
-printFiles = void . sequence . (<$>) (uncurry printFile)
+printFiles xs = void . sequence $ f <$> xs
+  where f = uncurry printFile
 
 -- Given a file name, return (file name and file contents).
 -- Use @readFile@.
 getFile ::
   FilePath
   -> IO (FilePath, Chars)
-getFile fname = ((,) fname) <$> readFile fname
+-- getFile name = do
+--   content <- readFile name
+--   return (name, content)
+
+getFile name = readFile name >>=
+  (\content -> pure (name, content))
 
 -- Given a list of file names, return list of (file name and file contents).
 -- Use @getFile@.
 getFiles ::
   List FilePath
   -> IO (List (FilePath, Chars))
-getFiles fnames = sequence (getFile <$> fnames)
+getFiles names = sequence (getFile <$> names)
 
 -- Given a file name, read it and for each line in that file, read and print contents of each.
 -- Use @getFiles@, @lines@, and @printFiles@.
 run ::
   FilePath
   -> IO ()
-run fname =
-  do
-    content <- readFile fname
-    let fnames = lines content
-    fnameContentTuples <- getFiles fnames
-    printFiles fnameContentTuples
+-- run name = do
+--   rawContent <- readFile name
+--   nameContentTuples <- getFiles (lines rawContent)
+--   printFiles nameContentTuples
+
+run name = (readFile name) >>=
+  (\rawContent -> getFiles (lines rawContent)) >>=
+    (\nameContentTuples -> printFiles nameContentTuples)
 
 
 -- /Tip:/ use @getArgs@ and @run@
 main ::
   IO ()
-main =
-  getArgs >>= \args ->
-    case args of
-      filename :. Nil -> run filename
-      _ -> putStrLn "usage: runhaskell io.hs filename"
+main = getArgs >>= \input ->
+  case input of
+    fileName :. Nil -> run fileName
+    _ -> putStrLn "usage: runhaskell io.hs filename"
 
 ----
 

@@ -12,6 +12,7 @@ import Course.List
 import Course.Functor
 import Course.Applicative
 import Course.Monad
+import Data.Char as C
 import qualified Data.Set as S
 
 -- $setup
@@ -38,7 +39,7 @@ exec ::
   State s a
   -> s
   -> s
-exec sk = snd . runState sk
+exec s = snd . runState s
 
 -- | Run the `State` seeded with `s` and retrieve the resulting value.
 --
@@ -47,7 +48,7 @@ eval ::
   State s a
   -> s
   -> a
-eval sk = fst . runState sk
+eval s = fst . runState s
 
 -- | A `State` where the state also distributes into the produced value.
 --
@@ -55,7 +56,7 @@ eval sk = fst . runState sk
 -- (0,0)
 get ::
   State s s
-get = State (\s -> (s, s))
+get = State (\x -> (x, x))
 
 -- | A `State` where the resulting state is seeded with the given value.
 --
@@ -64,7 +65,7 @@ get = State (\s -> (s, s))
 put ::
   s
   -> State s ()
-put s = State (\_ -> ((), s))
+put x = State (\_ -> ((), x))
 
 -- | Implement the `Functor` instance for `State s`.
 --
@@ -75,8 +76,7 @@ instance Functor (State s) where
     (a -> b)
     -> State s a
     -> State s b
-  f <$> sk = State $ \s -> let (a, nextS) = (runState sk) s
-                           in (f a, nextS)
+  f <$> s = State (\x -> let (a, s') = (runState s x) in (f a, s'))
 
 -- | Implement the `Applicative` instance for `State s`.
 --
@@ -92,14 +92,15 @@ instance Applicative (State s) where
   pure ::
     a
     -> State s a
-  pure a = State $ \s -> (a, s)
+  pure a = State (\s -> (a, s))
   (<*>) ::
     State s (a -> b)
     -> State s a
     -> State s b
-  (State gf) <*> (State k) = State $ \s -> let (fab, nextS) = gf s
-                                               (a, nextNextS) = k nextS
-                                            in (fab a, nextNextS)
+  sab <*> sa = State $ \s0 ->
+    let (fab, s) = runState sab s0
+        (a, s') = runState sa s
+    in (fab a, s')
 
 -- | Implement the `Monad` instance for `State s`.
 --
@@ -116,8 +117,10 @@ instance Monad (State s) where
     (a -> State s b)
     -> State s a
     -> State s b
-  fas =<< (State k) = State $ \s -> let (a, followingS) = k s
-                                    in runState (fas a) followingS
+  f =<< sa = State $ \s0 ->
+    let (a, s') = runState sa s0
+        bindState = f a
+    in runState bindState s'
 
 -- | Find the first element in a `List` that satisfies a given predicate.
 -- It is possible that no element is found, hence an `Optional` result.
@@ -139,9 +142,7 @@ findM ::
   -> List a
   -> f (Optional a)
 findM _ Nil = pure Empty
--- f x is a Functor[Bool] so we bind a function that checks its contents, if it's true then yee
--- otherwise we recurse
-findM f (x:.xs) = f x >>= (\q -> if q then pure (Full x) else findM f xs)
+findM filterM (x:.xs) = (filterM x) >>= (\isMatched -> if isMatched then pure (Full x) else findM filterM xs)
 
 -- | Find the first element in a `List` that repeats.
 -- It is possible that no element repeats, hence an `Optional` result.
@@ -154,10 +155,12 @@ firstRepeat ::
   Ord a =>
   List a
   -> Optional a
--- State f where f returns (Bool, f')
-firstRepeat xs = eval (findM f xs) S.empty
-  where
-    f a = State (\s -> (S.member a s, S.insert a s))
+-- Given a list, we use Data.Set to maintain what we've seen
+-- state s is our set, state function takes a set, returns (Optional a, s + elem)...we
+-- need access to a so need to use bind
+-- findM can return a state monad with value Optional a
+firstRepeat xs = eval (findM filterM xs) S.empty
+    where filterM x = State (\s -> (S.member x s, S.insert x s))
 
 -- | Remove all duplicate elements in a `List`.
 -- /Tip:/ Use `filtering` and `State` with a @Data.Set#Set@.
@@ -169,9 +172,8 @@ distinct ::
   Ord a =>
   List a
   -> List a
-distinct xs = eval (filtering f xs) S.empty
-    where
-      f a = State (\s -> (S.notMember a s, S.insert a s))
+distinct xs = eval (filtering notAddedYet xs) S.empty
+    where notAddedYet x = State (\s -> (S.notMember x s, S.insert x s))
 
 -- | A happy number is a positive integer, where the sum of the square of its digits eventually reaches 1 after repetition.
 -- In contrast, a sad number (not a happy number) is where the sum of the square of its digits never reaches 1
@@ -194,20 +196,14 @@ distinct xs = eval (filtering f xs) S.empty
 --
 -- >>> isHappy 44
 -- True
--- We want a set to pass along to see if we've seen the number before
--- If number is 1 then true. If number is in set, then false. Else recurse with new state.
--- Maybe produce a stream of numbers while not 1 and find firstRepeat. If firstRepeat
--- is not none then unhappy.
--- Produce takes a number and yields a new number. Use this to calculate sum of squares of digits
--- join is basically a flatMap where map function is just value itself
--- square is probably number that takes sum of square of digits
--- 1. Take Integer and convert to string with show
--- 2. Map each digit with digitToInt and square that
--- 3. Sum that
--- 4. Step 1 - 3 is our square function
--- 5. Use square function to feed into produce
+-- Use produce to generate total path of numbers
+-- Use firstRepeat on the produced numbers, if Empty we're happy, otherwise unhappy
+-- join takes monad monad val to monad val, unflattens it a level
+-- Optional contains, basically want to see if firstRepeat contains equals to 1 (end value)
 isHappy ::
   Integer
   -> Bool
-isHappy = let nextSquare = join (*) . digitToInt
-  in contains 1 . firstRepeat . produce (toInteger . sum . map nextSquare . show')
+isHappy v = contains 1 (firstRepeat numberPath)
+  where numSquared n = n * n
+        nextNum n = sum $ map (numSquared . C.digitToInt) (listh (show n))
+        numberPath = produce nextNum (P.fromIntegral v)

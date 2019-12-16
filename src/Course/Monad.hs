@@ -36,7 +36,7 @@ instance Monad ExactlyOne where
     (a -> ExactlyOne b)
     -> ExactlyOne a
     -> ExactlyOne b
-  f =<< ExactlyOne a = f a
+  f =<< eoa  = f (runExactlyOne eoa)
 
 -- | Binds a function on a List.
 --
@@ -47,7 +47,7 @@ instance Monad List where
     (a -> List b)
     -> List a
     -> List b
-  (=<<) = flatMap
+  f =<< xs = flatMap f xs
 
 -- | Binds a function on an Optional.
 --
@@ -69,7 +69,7 @@ instance Monad ((->) t) where
     (a -> ((->) t b))
     -> ((->) t a)
     -> ((->) t b)
-  (=<<) f g = \x -> f (g x) x
+  g =<< f = \x -> g (f x) x
 
 -- | Witness that all things with (=<<) and (<$>) also have (<*>).
 --
@@ -107,7 +107,7 @@ instance Monad ((->) t) where
   k (a -> b)
   -> k a
   -> k b
-(<**>) kab ka = kab >>= \ab -> ab <$> ka
+kab <**> ka = kab >>= \ab -> ab <$> ka
 
 infixl 4 <**>
 
@@ -128,8 +128,7 @@ join ::
   Monad k =>
   k (k a)
   -> k a
--- \x -> x (=<<) xs = flatMap \x -> x
-join = (=<<) id
+join kka = id =<< kka
 
 -- | Implement a flipped version of @(=<<)@, however, use only
 -- @join@ and @(<$>)@.
@@ -142,7 +141,7 @@ join = (=<<) id
   k a
   -> (a -> k b)
   -> k b
-(>>=) ka akb = join (akb <$> ka)
+ka >>= akb = join (akb <$> ka)
 
 infixl 1 >>=
 
@@ -157,7 +156,7 @@ infixl 1 >>=
   -> (a -> k b)
   -> a
   -> k c
-bkc <=< akb = \a -> (bkc =<< akb a)
+bkc <=< akb = \a -> akb a >>= bkc
 
 infixr 1 <=<
 
