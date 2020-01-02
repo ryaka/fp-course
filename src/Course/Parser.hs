@@ -310,21 +310,37 @@ space = satisfy isSpace
 --
 -- /Tip:/ Use @lift2@
 --
--- >>> parse (character .:. valueParser Nil) "abc"
+-- >>> parse (character .:.~ valueParser Nil) "abc"
 -- Result >bc< "a"
 --
--- >>> parse (digit .:. valueParser "hello") "321"
+-- >>> parse (digit .:.~ valueParser "hello") "321"
 -- Result >21< "3hello"
-(.:.) ::
+(.:.~) ::
   Parser a
   -> Parser (List a)
   -> Parser (List a)
 -- Run the first parser on the input, get back (remainder, x)
 -- Run the second parser on remainder, get (remainder', y)
 -- Return (remainder', x:.y)
-pa .:. pla = pa >>= (\c1 -> pla >>= (\c2 -> pure (c1:.c2)))
+pa .:.~ pla = pa >>= (\c1 -> pla >>= (\c2 -> pure (c1:.c2)))
 
-infixr 5 .:.
+infixr 5 .:.~
+
+(~.:.~) ::
+  Parser (List a)
+  -> Parser (List a)
+  -> Parser (List a)
+pa ~.:.~ pla = pa >>= (\c1 -> pla >>= (\c2 -> pure (c1 ++ c2)))
+
+infixr 5 ~.:.~
+
+(~.:.) ::
+  Parser (List a)
+  -> Parser a
+  -> Parser (List a)
+pa ~.:. pla = pa >>= (\c1 -> pla >>= (\c2 -> pure (c1 ++ c2:.Nil)))
+
+infixr 5 ~.:.
 
 -- | Return a parser that continues producing a list of values from the given parser.
 --
@@ -353,7 +369,7 @@ list ::
 -- Recursive values are either (parser p) + stuff, OR valueParser Nil
 -- Run and get results of parser p OR if it fails then it's just valueParser Nil for what
 -- we have so far
-list p = (p .:. (list p)) ||| valueParser Nil
+list p = (p .:.~ (list p)) ||| valueParser Nil
 
 -- | Return a parser that produces at least one value from the given parser then
 -- continues producing a list of values from the given parser (to ultimately produce a non-empty list).
@@ -371,7 +387,7 @@ list p = (p .:. (list p)) ||| valueParser Nil
 list1 ::
   Parser a
   -> Parser (List a)
-list1 p = p .:. (list p)
+list1 p = p .:.~ (list p)
 
 -- | Return a parser that produces one or more space characters
 -- (consuming until the first non-space) but fails if
@@ -480,7 +496,7 @@ ageParser =
 -- True
 firstNameParser ::
   Parser Chars
-firstNameParser = upper .:. (list lower)
+firstNameParser = upper .:.~ (list lower)
 
 -- | Write a parser for Person.surname.
 --
@@ -501,10 +517,7 @@ firstNameParser = upper .:. (list lower)
 -- True
 surnameParser ::
   Parser Chars
-surnameParser = upper .:. lowerCharsParser
-  where minNumLowerChars = (thisMany 5 lower)
-        concatWRemainingLowerParser = (\parsedCs -> (list lower) >>= (\restOfCs -> pure (parsedCs ++ restOfCs)))
-        lowerCharsParser = minNumLowerChars >>= concatWRemainingLowerParser
+surnameParser = upper .:.~ (thisMany 5 lower) ~.:.~ (list lower)
 
 -- | Write a parser for Person.smoker.
 --
@@ -564,8 +577,8 @@ phoneBodyParser = list (digit ||| is '.' ||| is '-')
 -- True
 phoneParser ::
   Parser Chars
-phoneParser = (digit .:. phoneBodyParser) >>= concatWHashTag
-  where concatWHashTag = (\parsedPhone -> (is '#') >>= (\_ -> pure parsedPhone))
+phoneParser = digit .:.~ phoneBodyParser ~.:.~ noopHashTagParser
+  where noopHashTagParser = (is '#') >>= (\_ -> pure Nil)
 
 -- | Write a parser for Person.
 --
