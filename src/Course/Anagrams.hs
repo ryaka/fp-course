@@ -7,6 +7,8 @@ module Course.Anagrams where
 import Course.Core
 import Course.List
 import Course.Functor
+import Course.Applicative
+import Course.Monad
 
 {-
 
@@ -32,13 +34,14 @@ anagrams ::
   Chars
   -> FilePath
   -> IO (List Chars)
-anagrams =
-  error "todo: Course.Anagrams#anagrams"
+anagrams s filepath = let sAnagrams = (permutations s) in do
+  content <- readFile filepath
+  return (intersectBy equalIgnoringCase (lines content) sAnagrams)
+
 
 -- Compare two strings for equality, ignoring case
 equalIgnoringCase ::
   Chars
   -> Chars
   -> Bool
-equalIgnoringCase =
-  error "todo: Course.Anagrams#equalIgnoringCase"
+equalIgnoringCase w1 w2 = (toLower <$> w1) == (toLower <$> w2)

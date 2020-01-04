@@ -25,6 +25,7 @@ import Course.List
 import Course.Functor
 import Course.Applicative
 import Course.Monad
+import Debug.Trace
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -320,8 +321,87 @@ fromChar _ =
 --
 -- >>> dollars "456789123456789012345678901234567890123456789012345678901234567890.12"
 -- "four hundred and fifty-six vigintillion seven hundred and eighty-nine novemdecillion one hundred and twenty-three octodecillion four hundred and fifty-six septendecillion seven hundred and eighty-nine sexdecillion twelve quindecillion three hundred and forty-five quattuordecillion six hundred and seventy-eight tredecillion nine hundred and one duodecillion two hundred and thirty-four undecillion five hundred and sixty-seven decillion eight hundred and ninety nonillion one hundred and twenty-three octillion four hundred and fifty-six septillion seven hundred and eighty-nine sextillion twelve quintillion three hundred and forty-five quadrillion six hundred and seventy-eight trillion nine hundred and one billion two hundred and thirty-four million five hundred and sixty-seven thousand eight hundred and ninety dollars and twelve cents"
+-- Steps:
+-- 1. Clean the input, remove everything that isn't a number or '.'
+-- 2. Some rough preprocessing, we will append a ".00" to the end of the string.
+-- 3. For dollars we take while it isn't a '.', For cents we drop while it isn't a '.'
+-- 4. For dollars we drop the leading digits until we have a divisible by 3 number of digits.
+-- For cents we drop everything that is a decimal and take just the first 2 leading digits.
+-- 5. Finally we call digitsToWord on dollars, digitsToWord on cents, concat together with an
+-- 'and' and append a 'cents' prefix to the end.
+
+tripletToDigit3 ::
+  Char
+  -> Char
+  -> Char
+  -> Digit3
+tripletToDigit3 h t o = D3 hundreds tens ones
+  where hundreds = (fromChar h) ?? Zero
+        tens = (fromChar t) ?? Zero
+        ones = (fromChar o) ?? Zero
+
+showDigit3 ::
+  Digit3
+  -> Chars
+-- Taken from https://github.com/tonymorris/fp-course/blob/master/src/Course/Cheque.hs
+-- since super tedious.
+showDigit3 d =
+    let showd x = toLower <$> showDigit x
+        x .++. y = x ++ if y == Zero then Nil else '-' :. showd y
+    in case d of
+        D1 a -> showd a
+        D2 Zero b -> showd b
+        D2 One b -> case b of
+                      Zero -> "ten"
+                      One -> "eleven"
+                      Two -> "twelve"
+                      Three -> "thirteen"
+                      Four -> "fourteen"
+                      Five -> "fifteen"
+                      Six -> "sixteen"
+                      Seven -> "seventeen"
+                      Eight -> "eighteen"
+                      Nine -> "nineteen"
+        D2 Two b -> "twenty" .++. b
+        D2 Three b -> "thirty" .++. b
+        D2 Four b -> "forty" .++. b
+        D2 Five b -> "fifty" .++. b
+        D2 Six b -> "sixty" .++. b
+        D2 Seven b -> "seventy" .++. b
+        D2 Eight b -> "eighty" .++. b
+        D2 Nine b -> "ninety" .++. b
+        D3 Zero Zero Zero -> ""
+        D3 Zero b c -> showDigit3 (D2 b c)
+        D3 a Zero Zero -> showd a ++ " hundred"
+        D3 a b c -> showd a ++ " hundred and " ++ showDigit3 (D2 b c)
+
+digitsToWord ::
+  Chars
+  -> Chars
+digitsToWord digits = unwords $ (\(word, units) -> word ++ (if units /= "" then (" " ++ units) else "")) <$> wordUnitTuples
+  where digitsLength = length digits
+        prefixLength = 3 - (digitsLength `mod` 3)
+        prefix = replicate prefixLength '0'
+        preprocessedDigits = prefix ++ digits
+        splitDigitsToDigit3 digits' = case digits' of
+          Nil -> Nil
+          (h:.t:.o:.xs) -> (tripletToDigit3 h t o):.(splitDigitsToDigit3 xs)
+          _ -> error $ hlist ("This should not happen: " ++ digits')
+        d3Triplets = splitDigitsToDigit3 preprocessedDigits
+        d3Words = showDigit3 <$> d3Triplets
+        -- Filter out all the skipped units but maintain the order
+        wordUnitTuples = filter (\(w, _) -> w /= "") $ reverse $ zip (reverse d3Words) illion
+
 dollars ::
   Chars
   -> Chars
-dollars =
-  error "todo: Course.Cheque#dollars"
+dollars rawInput = dollarWord ++ " " ++ dollarUnit ++ " and " ++ centWord ++ " " ++ centUnit
+  where cleanedInput = filter (\c -> (isDigit c) || (c == '.')) rawInput
+        preprocessedInput = "0" ++ cleanedInput ++ ".00"
+        dollarDigits = takeWhile (/= '.') preprocessedInput
+        centDigits = take 2 $ filter isDigit $ dropWhile (/= '.') preprocessedInput
+        dollarWord = if dollarDigits `elem` ("0":."00":."000":.Nil) then showDigit Zero else digitsToWord dollarDigits
+        dollarUnit = if dollarWord == (showDigit One) then "dollar" else "dollars"
+        centWord = if centDigits == "00" then showDigit Zero else digitsToWord centDigits
+        centUnit = if centWord == (showDigit One) then "cent" else "cents"
+

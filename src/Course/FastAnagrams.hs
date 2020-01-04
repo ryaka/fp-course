@@ -6,6 +6,8 @@ module Course.FastAnagrams where
 import Course.Core
 import Course.List
 import Course.Functor
+import Course.Applicative
+import Course.Monad
 import qualified Data.Set as S
 
 -- Return all anagrams of the given string
@@ -16,8 +18,13 @@ fastAnagrams ::
   Chars
   -> FilePath
   -> IO (List Chars)
-fastAnagrams =
-  error "todo: Course.FastAnagrams#fastAnagrams"
+fastAnagrams s filepath = let
+  sAnagrams = S.fromList $ hlist (hlist <$> (permutations s))
+  isAnagram = flip S.member sAnagrams
+  in do
+    content <- readFile filepath
+    let wordsInFile = hlist <$> (lines content)
+    return (listh <$> (filter isAnagram wordsInFile))
 
 newtype NoCaseString =
   NoCaseString {
